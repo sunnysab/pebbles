@@ -1,6 +1,5 @@
 .vscode
+.idea
 
 # Python
 venv/
-
-
