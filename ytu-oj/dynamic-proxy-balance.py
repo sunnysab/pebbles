@@ -94,6 +94,12 @@ def write_nginx_config(content: str, config: str = NGINX_CONF):
         f.flush()
 
 
+def restart_nginx():
+    """ Restart nginx. """
+
+    subprocess.run(['/usr/bin/sudo', 'systemctl', 'restart', 'nginx'])
+
+
 def main() -> None:
     """ Main function. """
 
@@ -106,6 +112,7 @@ def main() -> None:
 
     config = generate_config(proxies)
     write_nginx_config(config)
+    restart_nginx()
 
 
 if __name__ == '__main__':
