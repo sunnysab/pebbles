@@ -62,11 +62,9 @@ if __name__ == '__main__':
     filename = f'collection-{fav_collection_id}'
     count = 0
     make_filename = lambda: filename + '.csv' if count == 0 else f'{filename}-{count}.csv'
-    while os.path.exists(make_filename()) and count < 10:
+    while os.path.exists(make_filename()) and count < 100:
         count += 1
 
-    if count == 10:
-        exit(1)
 
     with open(make_filename(), 'w+') as f:
         for v in exported_collection:        
