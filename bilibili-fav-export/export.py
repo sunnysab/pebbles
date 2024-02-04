@@ -26,7 +26,8 @@ def export(id: int) -> List[StaredVideo]:
 
     def query_by_page(id: int, page: int) -> List[StaredVideo]:
         response = requests.get('https://api.bilibili.com/x/v3/fav/resource/list', 
-                                params={'media_id': id, 'pn': page, 'ps': 20})
+                                params={'media_id': id, 'pn': page, 'ps': 20},
+                                headers={'User-Agent': 'curl/8.6.0'})
         response.raise_for_status()
 
         try:
