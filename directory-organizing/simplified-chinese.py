@@ -2,8 +2,8 @@
 
 import os
 import argparse
+from typing import Iterable
 from zhconv import convert
-from file_iter import list_files
 
 
 DRY_RUN = True
@@ -14,6 +14,12 @@ def rename(old_name: str, new_name: str):
 
     if not DRY_RUN:
         os.rename(old_name, new_name)
+
+
+def walk_files(path: str) -> Iterable[str]:
+    for (root, _, fs) in os.walk(path):
+        for f in fs:
+            yield os.path.join(root, f)
 
 
 if __name__ == '__main__':
@@ -28,7 +34,7 @@ if __name__ == '__main__':
     PATH = args.path
     DRY_RUN = args.dry_run
 
-    for (t, file) in list_files(PATH):
+    for file in walk_files(PATH):
         new_name = convert(file, 'zh-cn')
         if new_name != file:
             rename(file, new_name)

@@ -32,9 +32,9 @@ class FileMetadata:
     def get_metadata(self) -> dict:
         sep = lambda l: ';'.join(l) if l else ''
 
-        artist = sep(self.metadata['artist'])
-        album = sep(self.metadata['album'])
-        title = sep(self.metadata['title'])
+        artist = sep(self.metadata['artist']) if 'artist' in self.metadata else ''
+        album = sep(self.metadata['album']) if 'album' in self.metadata else ''
+        title = sep(self.metadata['title']) if 'title' in self.metadata else ''
         return {'artist': artist, 'album': album, 'title': title}
     
     def set_metadata(self, metadata: dict) -> None:
