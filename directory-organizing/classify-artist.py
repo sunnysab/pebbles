@@ -3,9 +3,9 @@
 import re
 import os
 import sys
-from typing import Iterable
 from tag import FileMetadata
 from artist import ALL
+from detect import suspect
 
 ALL_ARTISTS = set(ALL)
 
@@ -52,17 +52,30 @@ for path in os.listdir(INPUT_PATH):
             elif maybe_title in ALL_ARTISTS:
                 artist = maybe_title
                 title = maybe_artist
-            else: # 无法判断歌手，人工处理
-                # TODO: 智能识别
+            else: # 无法判断歌手，用 AI 处理
                 print(f'file: {file}')
-                print(f'error: cannot parse artist. artist: {maybe_artist}, title: {maybe_title}')
-                continue
+                print(f'metadata: {metadata}')
 
+                suspect_result = suspect(metadata, file)
+                print(f'  => suspect: {suspect_result}')
+                artist = suspect_result['artist']
+                title = suspect_result['title']
+                if not artist or not title:
+                    print(f'error: cannot parse artist and title')
+                    os.remove(path)
+                    continue
+
+    if '金曲' in album or '精选' in album or '合辑' in album or '粤语' in album or '国语' in album:
+        album = None
     if not album or not album.strip():
         album = '单曲'
 
     ext = path.rsplit('.', 1)[1].lower()
     new_name = f'{artist} - {title}.{ext}'
+
+    if ',' in artist:
+        artist = artist.split(',')[0].strip()
+
     new_path = os.path.join(OUTPUT_PATH, artist, album, new_name)
 
     os.makedirs(os.path.dirname(new_path), exist_ok=True)
