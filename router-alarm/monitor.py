@@ -46,14 +46,3 @@ class Monitor:
 
 def current_time() -> str:
     return time.strftime(r'%Y-%m-%d %H:%M:%S', time.localtime())
-
-ROUTER_URL = 'http://192.168.129.1/'
-router = TPLinkRouter(ROUTER_URL)
-router.login('xxxxx')
-
-monitor = Monitor(router)
-monitor.on_device_up = lambda device: print(f'[{current_time()}] {device.hostname} 上线了')
-monitor.on_device_down = lambda device: print(f'[{current_time()}] {device.hostname} 下线了')
-
-monitor.start()
-
