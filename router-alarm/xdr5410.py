@@ -4,10 +4,10 @@ import json
 import urllib.parse
 
 
-ROUTER_URL = 'http://192.168.129.1'
-
 class DeviceInfo:
-    def __init__(self, mac, wifi_mode, device_type, phy_mode, ip, ipv6, hostname, up_speed, down_speed, connect_time, rssi):
+    """ 连上路由器的设备信息. """
+
+    def __init__(self, hostname, mac, wifi_mode, device_type, phy_mode, ip, ipv6, up_speed, down_speed, connect_time, rssi):
         self.mac: str = mac
         self.wifi_mode: int = int(wifi_mode)
         self.device_type: int = int(device_type)
@@ -28,6 +28,14 @@ class DeviceInfo:
     def __repr__(self):
         return self.__str__()
     
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, DeviceInfo):
+            return False
+        return self.mac == value.mac
+    
+    def __hash__(self) -> int:
+        return hash(self.mac)
+    
     def _from_dict_(d: dict):
         mac = d.get('mac', '')
         wifi_mode = int(d.get('wifi_mode', '0'))
@@ -40,7 +48,7 @@ class DeviceInfo:
         down_speed = int(d.get('down_speed', '0'))
         connect_time = d.get('connect_time', '0')
         rssi = int(d.get('rssi', '0'))
-        return DeviceInfo(mac, wifi_mode, device_type, phy_mode, ip, ipv6, hostname, up_speed, down_speed, connect_time, rssi)
+        return DeviceInfo(hostname, mac, wifi_mode, device_type, phy_mode, ip, ipv6, up_speed, down_speed, connect_time, rssi)
 
 
 class TPLinkRouter:
@@ -151,7 +159,7 @@ class TPLinkRouter:
         return []
 
 if __name__ == '__main__':
-    base_url = ROUTER_URL
+    base_url = 'http://192.168.129.1'
     router = TPLinkRouter(base_url)
     router.login('xxxxx')
     devices = router.devices()
