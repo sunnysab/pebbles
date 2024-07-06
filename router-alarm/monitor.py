@@ -18,6 +18,7 @@ class Monitor:
     def __init__(self, router: TPLinkRouter, interval: int = 2):
         self.interval = interval
         self.router = router
+        self.error_count = 0
         self.devices = router.devices()
         self.on_device_up: Callable[[DeviceInfo], None] | None = None
         self.on_device_down: Callable[[DeviceInfo], None] | None = None
@@ -28,9 +29,18 @@ class Monitor:
     def set_on_device_down(self, device_down_callback: Callable[[DeviceInfo], None]):
         self.on_device_down = device_down_callback
 
+    def get_devices(self) -> list[DeviceInfo]:
+        try:
+            devices = self.router.devices()
+            self.error_count = 0
+            return devices
+        except Exception as e:
+            self.error_count += 1
+            print(f'Error: {e}')
+
     def start(self):
         while True:
-            new_devices = self.router.devices()
+            new_devices = self.get_devices()
             up, down = Monitor.differenate_devices(self.devices, new_devices)
             self.devices = new_devices
 
