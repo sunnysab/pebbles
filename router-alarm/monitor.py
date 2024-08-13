@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import time
+import logging
 from typing import Callable
 from xdr5410 import TPLinkRouter, DeviceInfo
 
@@ -36,7 +37,7 @@ class Monitor:
             return devices
         except Exception as e:
             self.error_count += 1
-            print(f'Error: {e}')
+            logging.error(f'Error: {e}')
 
     def start(self):
         while True:
