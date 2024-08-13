@@ -1,0 +1,13 @@
+[Unit]
+Description=YZQ Alarm Service
+After=network.target
+
+[Service]
+User=sunnysab
+WorkingDirectory=/home/sunnysab/alarm
+ExecStart=/bin/sh -c "venv/bin/python main.py"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
