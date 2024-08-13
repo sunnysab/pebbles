@@ -67,15 +67,16 @@ class TPLinkRouter:
         self.base_url = base_url if base_url.endswith('/') else f'{base_url}/'
         self.stok = ''
         self.password = ''
+        self.session = requests.Session()
 
-    def _request(self, url: str, data: any) -> any:
+    def _post(self, url: str, data: any) -> any:
         headers = {
             'Content-Type': 'application/json; charset=UTF-8',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
             'X-Requested-With': 'XMLHttpRequest',
         }
 
-        response = requests.post(url, headers=headers, data=json.dumps(data))
+        response = self.session.post(url, headers=headers, data=json.dumps(data))
         response_json = response.json()
         if response_json['error_code'] != 0:
             raise Exception(f'code responded: {response_json["error_code"]}.')
@@ -118,7 +119,7 @@ class TPLinkRouter:
         data = {'method': 'do', 'login': {'password': TPLinkRouter._org_auth_pwd(password)}}
         
         try:
-            response = self._request(url, data)
+            response = self._post(url, data)
             self.stok = response['stok']
             self.password = password
         except Exception as e:
@@ -149,7 +150,7 @@ class TPLinkRouter:
                 },
                 'method': 'get'
             }
-            response = self._request(url, data)
+            response = self._post(url, data)
             hosts_info = response.get('hosts_info', {}).get('host_info', [])
             if not hosts_info:
                 self.login()
