@@ -4,6 +4,7 @@ from xdr5410 import TPLinkRouter, DeviceInfo
 from monitor import Monitor, current_time
 from alarm import send_alarm
 
+INTERVAL = 2
 KEYWORDS = []
 
 def on_device_up(device: DeviceInfo):
@@ -18,7 +19,7 @@ if __name__ == '__main__':
     router = TPLinkRouter('http://192.168.129.1/')
     router.login('')
     
-    monitor = Monitor(router)
+    monitor = Monitor(router, interval=INTERVAL)
     monitor.set_on_device_up(on_device_up)
     monitor.set_on_device_down(on_device_down)
 
