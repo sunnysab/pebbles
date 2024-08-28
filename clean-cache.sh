@@ -13,8 +13,12 @@ rm -rf ~/.debug/*
 rm -rf ~/.rustup/{downloads,tmp}/*
 rm -rf ~/.ghcup/{cache,tmp}/*
 
-
 sudo pacman -Scc
 
 # remove rust build crafts.
-fd -g -s "Cargo.toml" ~/Projects -x sh -c "cd {//}; cargo clean"
+if [ -e ~/.cargo/bin/cargo-clean-recursive ]; then
+    cargo clean-recursive ~/Projects/;
+else
+    echo "please consider to install cargo-clean-recursive."
+    fd -g -s "Cargo.toml" ~/Projects -x sh -c "cd {//}; cargo clean";
+fi
