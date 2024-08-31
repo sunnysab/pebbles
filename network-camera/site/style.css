@@ -1,0 +1,76 @@
+body, html {
+    height: 100%; /* 设置 body 和 html 高度为 100% */
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+#sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 250px;
+    height: 100%;
+    background-color: #f8f9fa;
+    overflow-y: auto;
+    transition: all 0.3s ease-in-out;
+    z-index: 1000;
+}
+
+#sidebar.collapsed {
+    width: 60px;
+}
+
+#sidebar .toggle-btn {
+    display: block;
+    background-color: #007bff;
+    color: white;
+    text-align: center;
+    padding: 10px;
+    cursor: pointer;
+}
+
+#videoFrame {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 250px; /* 默认宽度 */
+    width: calc(100% - 250px);
+    height: 100%; /* 设置 iframe 高度为 100% */
+    z-index: 1;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    #sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        left: 0;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+    }
+
+    #sidebar.collapsed {
+        transform: translateX(0);
+    }
+
+    #videoFrame {
+        position: relative;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+/* 全屏样式 */
+html.fullscreen #sidebar {
+    visibility: hidden;
+}
+html.fullscreen #videoFrame {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
