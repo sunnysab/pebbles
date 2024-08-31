@@ -4,7 +4,7 @@ import requests
 from requests.auth import HTTPDigestAuth
 
 
-class DahuaIPC:
+class UnvIPC:
     def __init__(self, host, username='admin', password='admin'):
         self.host = host
         self.base_url = f"http://{host}"
@@ -14,8 +14,15 @@ class DahuaIPC:
         self.session = requests.Session()
         self.session.auth = HTTPDigestAuth(self.username, self.password)
 
-    def _get(self, url, **kwargs) -> any:
-        response = self.session.get(url, timeout=1, **kwargs)
+    def _request(self, method, url, **kwargs) -> any:
+        method_func = None
+        match method:
+            case 'put': method_func = self.session.put
+            case 'post': method_func = self.session.post
+            case 'delete': method_func = self.session.delete
+            case _: method_func = self.session.get
+
+        response = method_func(url, timeout=1, **kwargs)
         response.raise_for_status()
 
         response.encoding = 'utf-8'
@@ -27,6 +34,12 @@ class DahuaIPC:
             raise Exception(f"Error: {code} {message}")
         
         return json_data['Response']['Data']
+            
+    def _put(self, url, **kwargs) -> any:
+        self._request('put', url, **kwargs)
+
+    def _get(self, url, **kwargs) -> any:
+        self._request('get', url, **kwargs)
 
     def get_basic_info(self):
         data = self._get(self.base_url + '/LAPI/V1.0/System/DeviceBasicInfo')
@@ -60,6 +73,10 @@ class DahuaIPC:
                     s = param['Value']
                     result.append(s)
         return result
+    
+    def reset_rtsp_auth(self, mode: int = 1):
+        # http://192.168.3.86/LAPI/V1.0/NetWork/RtspAuth
+        self._put(self.base_url + '/LAPI/V1.0/NetWork/RtspAuth', json={"Mode": mode})
 
 
 def parse_serial_number(device_info: dict) -> str:
@@ -67,7 +84,7 @@ def parse_serial_number(device_info: dict) -> str:
 
 
 def query_parameter(device: str) -> tuple[str, str]:
-    ipcam = DahuaIPC(device)
+    ipcam = UnvIPC(device)
     device_info = ipcam.get_basic_info()
     serial_number = parse_serial_number(device_info)
 
