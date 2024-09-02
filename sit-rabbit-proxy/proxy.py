@@ -4,15 +4,14 @@ from mitmproxy.tools.dump import DumpMaster
 
 from ifconfig import change_ip_address
 from scan import chose_one
-import threading
 
 import asyncio
 
 
 class IpChanger:
-    def __init__(self):
-        self.lock = threading.Lock()
+    """ mitmproxy addon
 
+    Change the IP address of the network interface when the current IP address is frozen."""
     @staticmethod
     def is_login_request(flow: http.HTTPFlow) -> bool:
         return flow.request.method == 'GET' \
@@ -23,17 +22,12 @@ class IpChanger:
     def has_been_freezed(flow: http.HTTPFlow) -> bool:
         return 'IP被冻结' in flow.response.text
 
-    def request(self, flow: http.HTTPFlow):
-        if IpChanger.is_login_request(flow):
-            self.lock.acquire(blocking=True)
-
     def response(self, flow: http.HTTPFlow):
         if IpChanger.is_login_request(flow) and flow.response.status_code == 200:
             if IpChanger.has_been_freezed(flow):
                 new_ip = chose_one('eth0', '10.1.160.0/24')
                 change_ip_address('eth0', new_ip)
                 print(f'IP changed to {new_ip}')
-            self.lock.release()
 
 async def run():
     options = Options(listen_host='0.0.0.0', listen_port=8080, http2=True)

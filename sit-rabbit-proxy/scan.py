@@ -55,21 +55,26 @@ _CHOSEN_IP = queue.Queue(120)
 _BLACKLIST = set()
 
 def chose_one(interface: str, network: str) -> str | None:
-    available = get_all_available_ip(interface, network)
+    available_address = get_all_available_ip(interface, network)
 
     def not_in_blacklist(ip: str) -> bool:
         return ip not in _BLACKLIST
+
+    def remove_from_blacklist(ip: str):
+        assert ip in _BLACKLIST
+        _BLACKLIST.remove(ip)
+
     def append_blacklist(ip: str) -> bool:
         assert ip not in _BLACKLIST
         _BLACKLIST.add(ip)
         try:
             _CHOSEN_IP.put(ip, block=False)
         except queue.Full:
-            _CHOSEN_IP.get(block=False)
+            remove_from_blacklist(ip)
             _CHOSEN_IP.put(ip, block=False)
         return True
 
-    for ip in available:
+    for ip in available_address:
         if not_in_blacklist(ip):
             append_blacklist(ip)
             return ip
@@ -77,8 +82,8 @@ def chose_one(interface: str, network: str) -> str | None:
 
 
 if __name__ == '__main__':
-    ip = get_all_available_ip('wlan0', '192.168.129.0/24')
-    print(len(ip))
+    ip_list = get_all_available_ip('wlan0', '192.168.129.0/24')
+    print(len(ip_list))
 
     for i in range(120):
         print(chose_one('wlan0', '192.168.129.0/24'))
