@@ -1,29 +1,48 @@
+import time
 import httpx
+from dataclasses import dataclass
 from typing import List, Dict, Any
 import asyncio
 
+@dataclass
 class Bathroom:
-    def __init__(self, bathroom_id: int, project_id: int, name: str, area_id: int, area_name: str, max_reservation_num: int):
-        self.bathroom_id = bathroom_id
-        self.project_id = project_id
-        self.name = name
-        self.area_id = area_id
-        self.area_name = area_name
-        self.max_reservation_num = max_reservation_num
+    bathroom_id: int
+    """浴室ID"""
+    project_id: int
+    """学校ID"""
+    name: str
+    """浴室名称，如：15号楼A楼浴室"""
+    area_id: int
+    """区域ID"""
+    area_name: str
+    """区域名称，如：山东烟台大学-15号楼A楼-一层"""
+    max_reservation_num: int
+    """最大预约人数"""
 
     def __repr__(self):
         return f"Bathroom({self.name}, Area: {self.area_name}, Max Reservations: {self.max_reservation_num})"
 
+@dataclass
 class DeviceStatus:
-    def __init__(self, device_id: int, device_name: str, is_use: int, mac_address: str):
-        self.device_id = device_id
-        self.device_name = device_name
-        self.is_use = is_use
-        self.mac_address = mac_address
+    bathroom_id: int
+    """浴室ID"""
+    device_id: int
+    """设备ID"""
+    device_name: str
+    """设备名称，如：1号"""
+    is_use: int
+    """是否使用中，1表示使用中，0表示空闲"""
+
+    def __hash__(self):
+        return self.device_id
+
+    def __eq__(self, other):
+        return self.device_id == other.device_id
 
     def __repr__(self):
         status = "使用中" if self.is_use == 1 else "空闲"
-        return f"Device({self.device_name}, 状态: {status}, MAC: {self.mac_address})"
+        return f"Device{self.device_id}({self.device_name}, 状态: {status})"
+
 
 class APIClient:
     BASE_URL = "https://v3-api.china-qzxy.cn"
@@ -79,29 +98,52 @@ class APIClient:
         headers = {'config_project': str(self.project_id)}
         data = await self._make_request(endpoint, params, headers)
         return [DeviceStatus(
+            bathroom_id=bathroom_id,
             device_id=device['deviceId'],
             device_name=device['deviceName'],
             is_use=device['isUse'],
-            mac_address=device['macAddress']
         ) for device in data["deviceList"]]
 
 class BathroomManager:
     def __init__(self, api_client: APIClient):
         self.api_client = api_client
+        self.bathrooms = []
+        self.last_devices = dict()
 
     async def get_all_bathrooms(self) -> List[Bathroom]:
-        return await self.api_client.fetch_bathrooms()
+        if not self.bathrooms:
+            self.bathrooms = await self.api_client.fetch_bathrooms()
+        return self.bathrooms
 
     async def get_device_status(self, bathroom_id: int) -> List[DeviceStatus]:
         return await self.api_client.fetch_device_status(bathroom_id)
 
-    async def print_bathroom_info(self):
+    async def fetch_all_bathroom_devices(self) -> List[DeviceStatus]:
         bathrooms = await self.get_all_bathrooms()
-        for bathroom in bathrooms:
-            print(f"\n{bathroom}")
-            devices = await self.get_device_status(bathroom.bathroom_id)
-            for device in devices:
-                print(f"  - {device}")
+
+        tasks = [self.get_device_status(bathroom.bathroom_id) for bathroom in bathrooms]
+        all_devices = await asyncio.gather(*tasks)
+        all_devices = [device for devices in all_devices for device in devices]
+        self.last_devices = {device.device_id: device for device in all_devices}
+        return all_devices
+
+    async def diff_bathroom_devices(self):
+        cached_devices = self.last_devices
+        devices = await self.fetch_all_bathroom_devices()
+        if not cached_devices:
+            return set(), set()
+
+        devices_up = set()
+        devices_down = set()
+        for device in devices:
+            assert device.device_id in cached_devices
+            old_status = cached_devices[device.device_id].is_use
+            new_status = device.is_use
+            if old_status == 0 and new_status == 1:
+                devices_up.add(device)
+            elif old_status == 1 and new_status == 0:
+                devices_down.add(device)
+        return devices_up, devices_down
 
 async def main():
     api_client = APIClient(
@@ -111,7 +153,18 @@ async def main():
         user_id=13118168
     )
     manager = BathroomManager(api_client)
-    await manager.print_bathroom_info()
+    
+    while True:
+        start_tick = time.time()
+        up, down = await manager.diff_bathroom_devices()
+        end_tick = time.time()
+
+        cost = end_tick - start_tick
+        print(f"总耗时: {cost:.2f} 秒")
+        print(f'up: {len(up)}, down: {len(down)}')
+        print(f'up: {up}, down: {down}')
+
+        await asyncio.sleep(max(0, 5 - cost))
 
 if __name__ == "__main__":
     asyncio.run(main())
