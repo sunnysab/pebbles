@@ -1,3 +1,4 @@
+import datetime
 import time
 import httpx
 from dataclasses import dataclass
@@ -113,7 +114,17 @@ class BathroomManager:
     async def get_all_bathrooms(self) -> List[Bathroom]:
         if not self.bathrooms:
             self.bathrooms = await self.api_client.fetch_bathrooms()
+            print(f'loaded {len(self.bathrooms)} bathrooms')
         return self.bathrooms
+    
+    async def get_bathroom_by_id(self, bathroom_id: int) -> Bathroom:
+        if not self.bathrooms:
+            await self.get_all_bathrooms()
+
+        for bathroom in self.bathrooms:
+            if bathroom.bathroom_id == bathroom_id:
+                return bathroom
+        return None
 
     async def get_device_status(self, bathroom_id: int) -> List[DeviceStatus]:
         return await self.api_client.fetch_device_status(bathroom_id)
@@ -126,6 +137,23 @@ class BathroomManager:
         all_devices = [device for devices in all_devices for device in devices]
         self.last_devices = {device.device_id: device for device in all_devices}
         return all_devices
+
+    async def count(self) -> tuple[int, int]:
+        if not self.last_devices:
+            await self.fetch_all_bathroom_devices()
+        up = sum(1 for device in self.last_devices.values() if device.is_use == 1)
+        down = len(self.last_devices) - up
+        return up, down
+    
+    async def devices_up(self) -> List[DeviceStatus]:
+        if not self.last_devices:
+            await self.fetch_all_bathroom_devices()
+        return [device for device in self.last_devices.values() if device.is_use == 1]
+    
+    async def devices_down(self) -> List[DeviceStatus]:
+        if not self.last_devices:
+            await self.fetch_all_bathroom_devices()
+        return [device for device in self.last_devices.values() if device.is_use == 0]
 
     async def diff_bathroom_devices(self):
         cached_devices = self.last_devices
@@ -153,7 +181,25 @@ async def main():
         user_id=13118168
     )
     manager = BathroomManager(api_client)
+    up, down = await manager.count()
+    print(f'当前设备使用中: {up}, 空闲: {down}')
+
+    devices_up = await manager.devices_up()
+    print(f'当前使用中的设备（前10个）:')
+    for device in devices_up[:10]:
+        bathroom = await manager.get_bathroom_by_id(device.bathroom_id)
+        print(bathroom)
     
+    INTERVAL = 5
+    def update_interval():
+        global INTERVAL
+
+        current_time = datetime.datetime.now().time()
+        if datetime.time(17, 0) <= current_time <= datetime.time(23, 30):
+            INTERVAL = 5
+        else:
+            INTERVAL = 10
+
     while True:
         start_tick = time.time()
         up, down = await manager.diff_bathroom_devices()
@@ -162,9 +208,11 @@ async def main():
         cost = end_tick - start_tick
         print(f"总耗时: {cost:.2f} 秒")
         print(f'up: {len(up)}, down: {len(down)}')
+        
         print(f'up: {up}, down: {down}')
 
-        await asyncio.sleep(max(0, 5 - cost))
+        await asyncio.sleep(max(0, INTERVAL - cost))
+        update_interval()
 
 if __name__ == "__main__":
     asyncio.run(main())
