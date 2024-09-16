@@ -1,0 +1,6 @@
+[database]
+uri = "postgresql://user:password@localhost/dbname"
+
+[qzxy]
+user = "user"
+password = "password"
