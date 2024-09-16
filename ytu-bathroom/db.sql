@@ -26,3 +26,16 @@ CREATE TABLE status_change (
     status action_enum NOT NULL,
     FOREIGN KEY (device_id) REFERENCES device(id)
 );
+
+DROP VIEW IF EXISTS status_change_view;
+CREATE VIEW status_change_view AS
+SELECT
+    status_change.timestamp,
+    bathroom.area_name,
+    device.device_name,
+    status_change.status
+FROM
+    status_change, device, bathroom
+WHERE
+    status_change.device_id = device.id AND
+    device.bathroom_id = bathroom.id;
