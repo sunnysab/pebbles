@@ -1,71 +1,97 @@
+import os
+import json
 import datetime
 import time
 import httpx
-from dataclasses import dataclass
-from typing import List, Dict, Any
 import asyncio
-
-@dataclass
-class Bathroom:
-    bathroom_id: int
-    """浴室ID"""
-    project_id: int
-    """学校ID"""
-    name: str
-    """浴室名称，如：15号楼A楼浴室"""
-    area_id: int
-    """区域ID"""
-    area_name: str
-    """区域名称，如：山东烟台大学-15号楼A楼-一层"""
-    max_reservation_num: int
-    """最大预约人数"""
-
-    def __repr__(self):
-        return f"Bathroom({self.name}, Area: {self.area_name}, Max Reservations: {self.max_reservation_num})"
-
-@dataclass
-class DeviceStatus:
-    bathroom_id: int
-    """浴室ID"""
-    device_id: int
-    """设备ID"""
-    device_name: str
-    """设备名称，如：1号"""
-    is_use: int
-    """是否使用中，1表示使用中，0表示空闲"""
-
-    def __hash__(self):
-        return self.device_id
-
-    def __eq__(self, other):
-        return self.device_id == other.device_id
-
-    def __repr__(self):
-        status = "使用中" if self.is_use == 1 else "空闲"
-        return f"Device{self.device_id}({self.device_name}, 状态: {status})"
+import hashlib
+from typing import List, Dict, Any
+from db import Database
+from entity import Bathroom, DeviceStatus
 
 
 class APIClient:
     BASE_URL = "https://v3-api.china-qzxy.cn"
     
-    def __init__(self, account_id: int, login_code: str, project_id: int, user_id: int):
-        self.account_id = account_id
-        self.login_code = login_code
-        self.project_id = project_id
-        self.user_id = user_id
+    def __init__(self):
+        self.client = httpx.AsyncClient()
 
-    async def _make_request(self, endpoint: str, params: Dict[str, Any], headers: Dict[str, str] = None) -> Dict[str, Any]:
+        # 学校相关的账号信息
+        self.account_id = None
+        # 登录信息（一个hash token）
+        self.login_code = None
+        # 用户ID
+        self.user_id = None
+        # 学校ID
+        self.project_id = None
+
+        self.login_status = self.load_login_cache()
+
+    def save_login_cache(self):
+        with open("login_cache.json", "w") as f:
+            json.dump({
+                "account_id": self.account_id,
+                "login_code": self.login_code,
+                "user_id": self.user_id,
+                "project_id": self.project_id
+            }, f)
+
+    def load_login_cache(self) -> bool:
+        if os.path.exists("login_cache.json"):
+            with open("login_cache.json", "r") as f:
+                data = json.load(f)
+                self.account_id = data["account_id"]
+                self.login_code = data["login_code"]
+                self.user_id = data["user_id"]
+                self.project_id = data["project_id"]
+                return True
+        return False
+
+    async def _make_request(self, endpoint: str, params: Dict[str, Any], headers: Dict[str, str] = None, method: str = "GET") -> Dict[str, Any]:
         url = f"{self.BASE_URL}{endpoint}"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                if data["success"] and data["errorCode"] == 0:
-                    return data["data"]
-                else:
-                    raise Exception(f"API请求失败: {data['errorMessage']}")
+        response = await self.client.request(method, url, params=params, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if data["success"] and data["errorCode"] == 0:
+                return data["data"]
             else:
-                raise Exception(f"请求失败，状态码: {response.status_code}")
+                raise Exception(f"API请求失败: {data['errorMessage']}")
+        else:
+            raise Exception(f"请求失败，状态码: {response.status_code}")
+        
+    async def login(self, phone: str, password: str):
+        if self.login_status:
+            print("已登录，跳过登录")
+            return
+
+        endpoint = "/user/login"
+        md5_password = hashlib.md5(password.encode()).hexdigest().upper()[-10:]
+        params = {
+            "identifier": "",
+            "password": md5_password,
+            "phoneSystem": "android",
+            "telephone": phone,
+            "type": 0,
+        }
+        
+        data = await self._make_request(endpoint, params, method="POST")
+        
+        if not data.get("loginCode") or not data.get("userId"):
+            raise Exception("登录失败：未获取到必要信息")
+        
+        self.login_code = data["loginCode"]
+        self.user_id = data["userId"]
+        if 'userAccount' in data:
+            self.account_id = data['userAccount']['accountId']
+            self.project_id = data['userAccount']['projectId']
+        else:
+            raise Exception("登录成功，但未绑定学校")
+        
+        self.login_status = True
+        self.save_login_cache()
+
+    def login_status(self) -> bool:
+        return self.login_status
 
     async def fetch_bathrooms(self) -> List[Bathroom]:
         endpoint = "/device/bath/list/area"
@@ -161,8 +187,7 @@ class BathroomManager:
         if not cached_devices:
             return set(), set()
 
-        devices_up = set()
-        devices_down = set()
+        devices_up, devices_down = set(), set()
         for device in devices:
             assert device.device_id in cached_devices
             old_status = cached_devices[device.device_id].is_use
@@ -174,15 +199,22 @@ class BathroomManager:
         return devices_up, devices_down
 
 async def main():
-    api_client = APIClient(
-        account_id=22766,
-        login_code="9c44c02821949bea51bdfc2b9b0d917c",
-        project_id=415,
-        user_id=13118168
-    )
+    from config import QZXY_USER, QZXY_PASSWORD
+    from config import DATABASE_URI
+
+    api_client = APIClient()
+    await api_client.login(QZXY_USER, QZXY_PASSWORD)
+    
     manager = BathroomManager(api_client)
+    bathrooms = await manager.get_all_bathrooms()
+    devices = await manager.fetch_all_bathroom_devices()
+
     up, down = await manager.count()
     print(f'当前设备使用中: {up}, 空闲: {down}')
+
+    db = Database(DATABASE_URI)
+    await db.connect()
+    await db.upsert_bathrooms_and_devices(bathrooms, devices)
 
     devices_up = await manager.devices_up()
     print(f'当前使用中的设备（前10个）:')
@@ -203,13 +235,13 @@ async def main():
     while True:
         start_tick = time.time()
         up, down = await manager.diff_bathroom_devices()
+        
+        asyncio.create_task(db.insert_status_changes(up))
+        asyncio.create_task(db.insert_status_changes(down))
         end_tick = time.time()
 
         cost = end_tick - start_tick
-        print(f"总耗时: {cost:.2f} 秒")
-        print(f'up: {len(up)}, down: {len(down)}')
-        
-        print(f'up: {up}, down: {down}')
+        print(f'up: {len(up)}, down: {len(down)}, cost: {cost:.2f}s')
 
         await asyncio.sleep(max(0, INTERVAL - cost))
         update_interval()
