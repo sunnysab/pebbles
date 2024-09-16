@@ -50,5 +50,5 @@ class Database:
             await conn.executemany('''
                 INSERT INTO status_change (timestamp, device_id, status)
                 VALUES ($1, $2, $3)
-            ''', [(timestamp, sc.device_id, map_status(sc.status)) for sc in status_changes])
+            ''', [(timestamp, sc.device_id, map_status(sc.is_use)) for sc in status_changes])
 
