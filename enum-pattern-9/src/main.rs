@@ -1,3 +1,5 @@
+mod draw;
+
 
 struct PatternGraph {
     matrix: [[bool; 10]; 10],
@@ -31,6 +33,8 @@ impl PatternGraph {
 
 struct Context {
     index: u32, // 结果计数
+    results: Vec<[u32; 10]>,
+
     path: [u32; 10],
     visited: [bool; 10],
     last: u32,
@@ -46,6 +50,7 @@ fn dfs(graph: &PatternGraph, ctx: &mut Context) -> u32 {
     if ctx.depth == 9 {
         ctx.index += 1;
         println!("{}\t{:?}", ctx.index, &ctx.path[1..]);
+        ctx.results.push(ctx.path);
         return 1;
     }
     ctx.depth += 1;
@@ -97,6 +102,7 @@ fn main() {
 
     let mut ctx = Context {
         index: 0,
+        results: Vec::new(),
         path: [0; 10],
         last: 0,
         depth: 0,
@@ -105,4 +111,8 @@ fn main() {
 
     let count = dfs(&graph, &mut ctx);
     println!("{} results in total.", count);
+
+    for i in 0..ctx.results.len() {
+        draw::export(i as u32, &ctx.results[i]);
+    }
 }
