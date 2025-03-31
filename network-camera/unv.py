@@ -36,10 +36,10 @@ class UnvIPC:
         return json_data['Response']['Data']
             
     def _put(self, url, **kwargs) -> any:
-        self._request('put', url, **kwargs)
+        return self._request('put', url, **kwargs)
 
     def _get(self, url, **kwargs) -> any:
-        self._request('get', url, **kwargs)
+        return self._request('get', url, **kwargs)
 
     def get_basic_info(self):
         data = self._get(self.base_url + '/LAPI/V1.0/System/DeviceBasicInfo')
