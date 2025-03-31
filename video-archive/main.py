@@ -60,8 +60,15 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
     video_filters = []
     
     if config.max_resolution:
-        if video_info['height'] > config.max_resolution:
-            video_filters.append(f'scale=-2:{config.max_resolution}')
+        # 检查视频方向（横向或纵向）
+        if video_info['width'] > video_info['height']:
+            # 横向视频：限制高度
+            if video_info['height'] > config.max_resolution:
+                video_filters.append(f'scale=-2:{config.max_resolution}')
+        else:
+            # 纵向视频：限制宽度
+            if video_info['width'] > config.max_resolution:
+                video_filters.append(f'scale={config.max_resolution}:-2')
     
     if config.max_framerate and video_info['frame_rate'] > config.max_framerate:
         video_filters.append(f'fps={config.max_framerate}')
@@ -176,17 +183,27 @@ def process_files(config):
     for input_path in video_files:
         rel_path = os.path.relpath(input_path, config.input_dir)
         output_path = os.path.join(config.output_dir, rel_path)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        progress.begin_file(input_path)
+        if os.path.exists(output_path):
+            print(f"\n跳过：输出文件已存在")
+            continue
         
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        progress.begin_file(input_path)
+
         # 测试转码
         test_output = f'{output_path}-{config.codec}.mp4'
-        test_success = transcode_video(
-            input_path, test_output, config, 
-            test_mode=True,
-            progress_callback=lambda p: progress.update(p)
-        )
+        try:
+            test_success = transcode_video(
+                input_path, test_output, config, 
+                test_mode=True,
+                progress_callback=lambda p: progress.update(p)
+            )
+        except Exception as e:
+            print(f"\n转码失败: {input_path}")
+            print(f"错误: {e}")
+            progress.end_file()
+            shutil.move(input_path, output_path)
+            continue
         
         if not test_success:
             progress.end_file()
