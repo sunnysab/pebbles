@@ -16,17 +16,29 @@ def get_video_info(input_file: str):
         '-of', 'json',
         input_file
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    info = json.loads(result.stdout)['streams'][0]
-    
-    # 解析帧率
-    frame_rate = eval(info['r_frame_rate'])
-    return {
-        'width': int(info['width']),
-        'height': int(info['height']),
-        'frame_rate': round(frame_rate, 2),
-        'duration': float(info['duration'])
-    }
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        if not data.get('streams'):
+            raise ValueError(f"无法获取视频流信息: {input_file}")
+        info = data['streams'][0]
+        
+        # 解析帧率 - 安全地解析分数格式 (例如 "30/1")
+        frame_rate_str = info['r_frame_rate']
+        if '/' in frame_rate_str:
+            numerator, denominator = frame_rate_str.split('/')
+            frame_rate = float(numerator) / float(denominator) if float(denominator) != 0 else 0
+        else:
+            frame_rate = float(frame_rate_str)
+        
+        return {
+            'width': int(info['width']),
+            'height': int(info['height']),
+            'frame_rate': round(frame_rate, 2),
+            'duration': float(info['duration'])
+        }
+    except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError, ValueError) as e:
+        raise ValueError(f"获取视频信息失败: {input_file}, 错误: {e}")
 
 def parse_ffmpeg_progress(line, total_duration):
     """解析FFmpeg输出中的进度信息"""
@@ -110,8 +122,13 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
         errors='replace'
     )
     
+    if not process.stderr:
+        print(f"\n无法启动FFmpeg进程: {input_path}")
+        return False
+    
     # 实时解析进度
     last_progress = 0
+    last_time = time.time()
     while True:
         if process.poll() is not None:
             break
@@ -123,10 +140,12 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
         # 解析进度
         progress = parse_ffmpeg_progress(line, total_duration)
         if progress and progress_callback:
+            current_time = time.time()
             # 避免频繁回调，至少间隔1%或1秒
-            if (progress - last_progress) > 0.01 or (time.time() - last_progress) > 1:
+            if (progress - last_progress) > 0.01 or (current_time - last_time) > 1:
                 progress_callback(progress)
                 last_progress = progress
+                last_time = current_time
     
     if process.returncode != 0:
         print(f"\n转码失败: {input_path}")
@@ -139,6 +158,8 @@ class ProgressDisplay:
         self.total_files = total_files
         self.current_file = 1
         self.start_time = time.time()
+        self.filename = ""
+        self.file_start = 0.0
     
     def begin_file(self, filename):
         """开始处理新文件"""
@@ -172,10 +193,14 @@ class ProgressDisplay:
 
 def process_files(config):
     """处理目录中的所有视频文件"""
+    video_extensions = {'.mp4', '.mov', '.mkv', '.avi', '.ts'}
     video_files = []
+    
     for root, _, files in os.walk(config.input_dir):
         for file in files:
-            if file.split('.')[-1].lower() in ['mp4', 'mov', 'mkv', 'avi', 'ts']:
+            # 安全地获取文件扩展名
+            file_ext = os.path.splitext(file)[1].lower()
+            if file_ext in video_extensions:
                 video_files.append(os.path.join(root, file))
     
     progress = ProgressDisplay(len(video_files))
@@ -197,6 +222,9 @@ def process_files(config):
             # 测试转码
             test_output = f'{output_path}-{config.codec}.mp4'
             try:
+                # 获取视频信息用于后续计算
+                video_info = get_video_info(input_path)
+                
                 test_success = transcode_video(
                     input_path, test_output, config, 
                     test_mode=True,
@@ -214,22 +242,42 @@ def process_files(config):
                 continue
             
             # 计算压缩率
-            orig_size = os.path.getsize(input_path) * (1/60)
+            orig_size = os.path.getsize(input_path)
             test_size = os.path.getsize(test_output)
+            
+            # 按测试时长估算完整文件转码后的大小
+            test_duration = min(video_info['duration'], 60)
+            estimated_full_size = test_size * (video_info['duration'] / test_duration)
+            
+            # 计算节省的空间比例
+            space_saved_ratio = (orig_size - estimated_full_size) / orig_size
             os.remove(test_output)
             
-            if (orig_size - test_size) / orig_size < 0.1:
-                print(f"\n跳过：空间节省不足10%")
+            if space_saved_ratio < 0.1:
+                print(f"\n跳过：空间节省不足10% (估算节省 {space_saved_ratio:.1%})")
                 
                 shutil.move(input_path, output_path)
                 progress.end_file()
                 continue
         
         # 完整转码
-        full_success = transcode_video(
-            input_path, output_path, config,
-            progress_callback=lambda p: progress.update(p)
-        )
+        try:
+            full_success = transcode_video(
+                input_path, output_path, config,
+                progress_callback=lambda p: progress.update(p)
+            )
+            
+            if not full_success:
+                print(f"\n完整转码失败: {input_path}")
+                # 如果转码失败，删除可能的不完整输出文件
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+        except Exception as e:
+            print(f"\n完整转码出错: {input_path}")
+            print(f"错误: {e}")
+            # 清理不完整的输出文件
+            if os.path.exists(output_path):
+                os.remove(output_path)
         
         progress.end_file()
 
