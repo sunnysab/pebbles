@@ -175,14 +175,17 @@ def process_files(config):
     video_files = []
     for root, _, files in os.walk(config.input_dir):
         for file in files:
-            if file.split('.')[-1].lower() in ['mp4', 'mov', 'mkv', 'avi']:
+            if file.split('.')[-1].lower() in ['mp4', 'mov', 'mkv', 'avi', 'ts']:
                 video_files.append(os.path.join(root, file))
     
     progress = ProgressDisplay(len(video_files))
     
     for input_path in video_files:
+        # 获取相对路径并修改扩展名为 mp4
         rel_path = os.path.relpath(input_path, config.input_dir)
+        rel_path = os.path.splitext(rel_path)[0] + '.mp4'
         output_path = os.path.join(config.output_dir, rel_path)
+
         if os.path.exists(output_path):
             print(f"\n跳过：输出文件已存在")
             continue
@@ -190,36 +193,37 @@ def process_files(config):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         progress.begin_file(input_path)
 
-        # 测试转码
-        test_output = f'{output_path}-{config.codec}.mp4'
-        try:
-            test_success = transcode_video(
-                input_path, test_output, config, 
-                test_mode=True,
-                progress_callback=lambda p: progress.update(p)
-            )
-        except Exception as e:
-            print(f"\n转码失败: {input_path}")
-            print(f"错误: {e}")
-            progress.end_file()
-            shutil.move(input_path, output_path)
-            continue
-        
-        if not test_success:
-            progress.end_file()
-            continue
-        
-        # 计算压缩率
-        orig_size = os.path.getsize(input_path) * (1/60)
-        test_size = os.path.getsize(test_output)
-        os.remove(test_output)
-        
-        if (orig_size - test_size) / orig_size < 0.1:
-            print(f"\n跳过：空间节省不足10%")
+        if not config.skip_test:
+            # 测试转码
+            test_output = f'{output_path}-{config.codec}.mp4'
+            try:
+                test_success = transcode_video(
+                    input_path, test_output, config, 
+                    test_mode=True,
+                    progress_callback=lambda p: progress.update(p)
+                )
+            except Exception as e:
+                print(f"\n转码失败: {input_path}")
+                print(f"错误: {e}")
+                progress.end_file()
+                shutil.move(input_path, output_path)
+                continue
             
-            shutil.move(input_path, output_path)
-            progress.end_file()
-            continue
+            if not test_success:
+                progress.end_file()
+                continue
+            
+            # 计算压缩率
+            orig_size = os.path.getsize(input_path) * (1/60)
+            test_size = os.path.getsize(test_output)
+            os.remove(test_output)
+            
+            if (orig_size - test_size) / orig_size < 0.1:
+                print(f"\n跳过：空间节省不足10%")
+                
+                shutil.move(input_path, output_path)
+                progress.end_file()
+                continue
         
         # 完整转码
         full_success = transcode_video(
@@ -245,6 +249,8 @@ if __name__ == "__main__":
                        help="编码速度预设（1-13，值越大速度越快质量越低）")
     parser.add_argument('--extra_args', nargs=argparse.REMAINDER,
                        help="额外的FFmpeg参数")
+    parser.add_argument('--skip_test', action='store_true',
+                       help="跳过测试转码步骤")
 
     args = parser.parse_args()
     
