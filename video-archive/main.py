@@ -193,7 +193,7 @@ class ProgressDisplay:
 
 def process_files(config):
     """处理目录中的所有视频文件"""
-    video_extensions = {'.mp4', '.mov', '.mkv', '.avi', '.ts'}
+    video_extensions = {'.mp4', '.mov', '.mkv', '.avi', '.ts', '.flv'}
     video_files = []
     
     for root, _, files in os.walk(config.input_dir):
