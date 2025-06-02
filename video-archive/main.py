@@ -4,6 +4,7 @@ import subprocess
 import argparse
 import json
 import re
+import tempfile
 from datetime import timedelta
 import time
 
@@ -12,7 +13,7 @@ def get_video_info(input_file: str):
     cmd = [
         'ffprobe', '-v', 'error',
         '-select_streams', 'v:0',
-        '-show_entries', 'stream=width,height,r_frame_rate,duration',
+        '-show_entries', 'stream=width,height,r_frame_rate,duration,codec_name',
         '-of', 'json',
         input_file
     ]
@@ -35,10 +36,16 @@ def get_video_info(input_file: str):
             'width': int(info['width']),
             'height': int(info['height']),
             'frame_rate': round(frame_rate, 2),
-            'duration': float(info['duration'])
+            'duration': float(info['duration']),
+            'codec_name': info.get('codec_name', 'unknown')
         }
     except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError, ValueError) as e:
         raise ValueError(f"获取视频信息失败: {input_file}, 错误: {e}")
+
+
+def is_target_codec(codec_name: str) -> bool:
+    """检查是否已经是目标编码格式 (AV1 或 H265)"""
+    return codec_name.lower() in ['av01', 'hevc', 'h265', 'x265', 'libx265', 'libsvtav1']
 
 def parse_ffmpeg_progress(line, total_duration):
     """解析FFmpeg输出中的进度信息"""
@@ -64,6 +71,17 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
     """执行转码操作（带进度回调）"""
     video_info = get_video_info(input_path)
     total_duration = min(video_info['duration'], 60) if test_mode else video_info['duration']
+    
+    # 检查是否为原地转换（输入和输出路径相同）
+    is_in_place = os.path.abspath(input_path) == os.path.abspath(output_path)
+    actual_output = output_path
+    
+    if is_in_place:
+        # 原地转换：创建临时文件
+        temp_dir = os.path.dirname(output_path)
+        temp_fd, temp_path = tempfile.mkstemp(suffix='.tmp.mp4', dir=temp_dir)
+        os.close(temp_fd)  # 关闭文件描述符，只使用路径
+        actual_output = temp_path
     
     # 构建基本命令
     cmd = ['ffmpeg', '-i', input_path, '-y']
@@ -111,7 +129,7 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
     if config.extra_args:
         cmd += config.extra_args
     
-    cmd.append(output_path)
+    cmd.append(actual_output)
     
     # 启动FFmpeg进程
     process = subprocess.Popen(
@@ -124,6 +142,8 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
     
     if not process.stderr:
         print(f"\n无法启动FFmpeg进程: {input_path}")
+        if is_in_place and os.path.exists(actual_output):
+            os.remove(actual_output)
         return False
     
     # 实时解析进度
@@ -149,7 +169,32 @@ def transcode_video(input_path, output_path, config, test_mode=False, progress_c
     
     if process.returncode != 0:
         print(f"\n转码失败: {input_path}")
+        if is_in_place and os.path.exists(actual_output):
+            os.remove(actual_output)
         return False
+    
+    # 如果是原地转换，需要替换原文件
+    if is_in_place:
+        try:
+            # 备份原文件（可选，增加安全性）
+            backup_path = f"{input_path}.backup"
+            shutil.move(input_path, backup_path)
+            
+            # 移动临时文件到目标位置
+            shutil.move(actual_output, output_path)
+            
+            # 删除备份文件
+            os.remove(backup_path)
+            
+        except Exception as e:
+            print(f"\n原地转换失败: {e}")
+            # 恢复备份文件
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, input_path)
+            if os.path.exists(actual_output):
+                os.remove(actual_output)
+            return False
+    
     return True
 
 class ProgressDisplay:
@@ -211,8 +256,14 @@ def process_files(config):
         rel_path = os.path.splitext(rel_path)[0] + '.mp4'
         output_path = os.path.join(config.output_dir, rel_path)
 
-        if os.path.exists(output_path):
-            print(f"\n跳过：输出文件已存在")
+        # 检查视频编码格式，如果已经是目标格式则跳过
+        try:
+            video_info = get_video_info(input_path)
+            if is_target_codec(video_info['codec_name']):
+                print(f"\n跳过：视频已是 AV1/H265 格式 ({video_info['codec_name']})")
+                continue
+        except Exception as e:
+            print(f"\n无法获取视频信息，跳过: {input_path}, 错误: {e}")
             continue
         
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -284,7 +335,8 @@ def process_files(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="视频批量转码工具")
     parser.add_argument('input_dir', help="输入目录")
-    parser.add_argument('output_dir', help="输出目录")
+    parser.add_argument('output_dir', nargs='?', default=None,
+                       help="输出目录（可选，默认为输入目录，即原地转换）")
     parser.add_argument('--codec', choices=['h265', 'av1'], required=True,
                        help="目标编码格式")
     parser.add_argument('--max_resolution', type=int,
@@ -301,6 +353,11 @@ if __name__ == "__main__":
                        help="跳过测试转码步骤")
 
     args = parser.parse_args()
+    
+    # 如果未提供输出目录，使用输入目录（原地转换）
+    if args.output_dir is None:
+        args.output_dir = args.input_dir
+        print("未指定输出目录，将进行原地转换")
     
     # 验证FFmpeg可用性
     try:
