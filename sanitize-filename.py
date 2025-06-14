@@ -4,11 +4,12 @@
 文件名清理脚本
 功能：
 1. 删除文件名开头和结尾的空格
-2. 删除文件名开头的emoji
-3. 将文件名中的emoji转换为空格
-4. 规范化多个连续空格为单个空格
-5. 删除文件尾部的特定字符串（如 (z-lib.org)）
-6. 支持自定义清理规则的扩展
+2. 删除文件名开头和结尾的标点符号（中英文逗号、冒号、句号等）
+3. 删除文件名开头的emoji
+4. 将文件名中的emoji转换为空格
+5. 规范化多个连续空格为单个空格
+6. 删除文件尾部的特定字符串（如 (z-lib.org)）
+7. 支持自定义清理规则的扩展
 
 用法：python3 sanitize-filename.py <目录路径>
 """
@@ -120,6 +121,33 @@ class FilenameSanitizer:
         """
         return self.tail_regex.sub('', filename).strip()
     
+    def remove_punctuation_at_ends(self, filename: str) -> str:
+        """
+        删除文件名开头和结尾的标点符号
+        包括中英文的逗号、冒号、句号、顿号、感叹号等
+        """
+        # 定义需要删除的标点符号（开头和结尾）
+        punctuation_chars = {
+            # 英文标点
+            ',', '.', ':', '!',
+            # 中文标点
+            '，', '。', '：', '！', '、', '·'
+        }
+        
+        # 从开头删除标点符号
+        start_index = 0
+        while start_index < len(filename) and filename[start_index] in punctuation_chars:
+            start_index += 1
+        
+        # 从结尾删除标点符号
+        end_index = len(filename)
+        while end_index > start_index and filename[end_index - 1] in punctuation_chars:
+            end_index -= 1
+        
+        # 返回清理后的字符串
+        result = filename[start_index:end_index]
+        return result if result else filename  # 如果全是标点符号，返回原字符串
+    
     def sanitize_filename(self, filename: str) -> str:
         """
         完整的文件名清理流程
@@ -148,7 +176,10 @@ class FilenameSanitizer:
         # 步骤4: 删除尾部特定字符串
         name = self.remove_tail_patterns(name)
         
-        # 步骤5: 最终空格清理
+        # 步骤5: 删除开头和结尾的标点符号
+        name = self.remove_punctuation_at_ends(name)
+        
+        # 步骤6: 最终空格清理
         name = self.normalize_spaces(name)
         
         # 如果处理后文件名为空，使用默认名称
